@@ -55,41 +55,72 @@
                 document.getElementById('p-50').innerText = `$${Math.round(data.percentile_50).toLocaleString()}`;
                 document.getElementById('p-5').innerText = `$${Math.round(data.percentile_5).toLocaleString()}`;
 
-                render3DCloud(data);
+                renderProbabilisticCloud(data);
             } catch (err) {
                 console.error(err);
             }
         }
 
-        function render3DCloud(data) {
-            let days = [];
-            let upperCone = [], lowerCone = [], meanCone = [];
-            
-            for(let i=0; i<=252; i+=10) {
-                days.push(i);
-                let factor = i / 252;
-                upperCone.push(data.current_price + (data.percentile_95 - data.current_price) * factor);
-                meanCone.push(data.current_price + (data.mean_expected_price - data.current_price) * factor);
-                lowerCone.push(data.current_price + (data.percentile_5 - data.current_price) * factor);
+        function renderProbabilisticCloud(data) {
+            let xData = [], yData = [], zData = [], colorData = [];
+            const steps = 50; 
+            const samplesPerStep = 60; 
+
+            for (let step = 0; step <= steps; step++) {
+                let day = (step / steps) * 252;
+                let progress = step / steps;
+                
+                let currentMean = data.current_price + (data.mean_expected_price - data.current_price) * progress;
+                let currentSpread = ((data.percentile_95 - data.percentile_5) / 2) * Math.sqrt(progress);
+
+                for (let i = 0; i < samplesPerStep; i++) {
+                    let u1 = Math.random(), u2 = Math.random();
+                    let randStd = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+                    
+                    let price = currentMean + randStd * (currentSpread / 2);
+                    let probabilityDepth = Math.exp(-0.5 * randStd * randStd) * 100;
+
+                    xData.push(day);
+                    yData.push(price);
+                    zData.push(probabilityDepth);
+                    colorData.push(price);
+                }
             }
 
-            const trace3DUpper = { x: days, y: upperCone, z: days.map(d => d * 0.5), type: 'scatter3d', mode: 'lines', line: { color: '#00ff88', width: 6 }, name: '95% Bull Case' };
-            const trace3DMean = { x: days, y: meanCone, z: days.map(d => 0), type: 'scatter3d', mode: 'lines', line: { color: '#00f2fe', width: 8 }, name: 'Mean Expected' };
-            const trace3DLower = { x: days, y: lowerCone, z: days.map(d => -d * 0.5), type: 'scatter3d', mode: 'lines', line: { color: '#ff0055', width: 6 }, name: '5% Bear Case' };
+            const cloudTrace = {
+                x: xData,
+                y: yData,
+                z: zData,
+                mode: 'markers',
+                type: 'scatter3d',
+                marker: {
+                    size: 2.5,
+                    color: colorData,
+                    colorscale: [
+                        [0, '#ff0055'],
+                        [0.25, '#ffcc00'],
+                        [0.5, '#00f2fe'],
+                        [0.75, '#00ff88'],
+                        [1, '#e000ff']
+                    ],
+                    opacity: 0.6
+                },
+                name: 'Probability Cloud'
+            };
 
             const layout = {
-                title: { text: '3D Monte Carlo Probabilistic Cloud Graph', font: { color: '#ffffff' } },
+                title: { text: '3D Monte Carlo Probabilistic Density Cloud', font: { color: '#ffffff' } },
                 paper_bgcolor: '#0f172a',
                 plot_bgcolor: '#0f172a',
                 scene: {
-                    xaxis: { title: 'Days', backgroundcolor: '#0f172a', gridcolor: '#1e293b', color: '#fff' },
+                    xaxis: { title: 'Days Ahead', backgroundcolor: '#0f172a', gridcolor: '#1e293b', color: '#fff' },
                     yaxis: { title: 'Price (USDT)', backgroundcolor: '#0f172a', gridcolor: '#1e293b', color: '#fff' },
-                    zaxis: { title: 'Probability Depth', backgroundcolor: '#0f172a', gridcolor: '#1e293b', color: '#fff' },
-                    camera: { eye: { x: 1.5, y: 1.5, z: 0.8 } }
+                    zaxis: { title: 'Density / Likelihood', backgroundcolor: '#0f172a', gridcolor: '#1e293b', color: '#fff' },
+                    camera: { eye: { x: 1.4, y: 1.4, z: 0.9 } }
                 }
             };
 
-            Plotly.newPlot('chart-container', [trace3DUpper, trace3DMean, trace3DLower], layout);
+            Plotly.newPlot('chart-container', [cloudTrace], layout);
         }
 
         fetchSimulation();
